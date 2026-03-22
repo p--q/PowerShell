@@ -8,6 +8,6 @@ git pull
 
 Fix-BOM.ps1で文字エンコードを変更。
 
-Register-ShortcutMaker-Context.ps1でps1ファイルのコンテクストメニューでキーボード・ショートカットを割当できるようにする。
+ps1ファイルのショートカットをタスクバーにピン留め。
 
-Unregister-ShortcutMaker-Context.ps1でキーボード・ショートカットを割り当てるコンテクストメニューを削除する。
+左端からWin+順番数字で起動可能。
