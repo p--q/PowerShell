@@ -2,6 +2,8 @@
 
 まず許可コマンドでps1の実行を許可する。
 
+Check_PS_Environment.ps1で実行環境の確認。
+
 git stash 文字エンコードしているためそのままではpullできないので。
 
 git pull
