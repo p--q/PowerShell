@@ -2,10 +2,10 @@
 .FILENAME
     Format-Prescription.ps1
 .VERSION
-    1.0.0
+    1.1.0
 .DESCRIPTION
     クリップボード内の処方箋テキストを取得し、以下の整形を行います。
-    1. 不要な行（商品名、--、<、患者様への注意書き等）の削除
+    1. 不要な行（商品名、処方箋使用期限、--、<、注意書き等）の削除
     2. 泣き別れ（改行）した薬品名の自動結合
     3. 用法（分1、分3、外用等）の簡略化と正規化
     4. 連続する空白の半角スペース1つへの集約
@@ -28,8 +28,10 @@ $lines = $inputContent -split "`r?`n" | ForEach-Object {
     $line = $line -replace "[（\(].*?として[）\)]", ""
     # 行先頭の空白削除
     $line = $line.TrimStart()
-    # 「--」または「<」から始まる行を除外
-    if ($line -match "^(--|<)") { return $null }
+    
+    # 削除対象の行（処方箋使用期限、--、< から始まる行）
+    if ($line -match "^(処方箋使用期限|--|<)") { return $null }
+    
     $line
 } | Where-Object { $_ -ne $null }
 
@@ -51,7 +53,6 @@ foreach ($block in $blocks) {
     $mergedLines = New-Object System.Collections.Generic.List[string]
     for ($i = 0; $i -lt $blockLines.Count; $i++) {
         $current = $blockLines[$i]
-        # 最長行より短く、かつ末尾が「錠」や「枚」などでない場合に次行と結合（簡易判定）
         if ($i -lt $blockLines.Count - 1 -and $current.Length -lt $maxLen) {
             $mergedLines.Add($current + $blockLines[$i+1])
             $i++ # 次の行を消費
@@ -65,18 +66,17 @@ foreach ($block in $blocks) {
     foreach ($line in $mergedLines) {
         $l = $line
 
-        # 「分」から始まる行
+        # 「分」から始まる行 (全角半角両対応)
         if ($l -match "^分") {
-            # 2個以上の連続空白があれば、それ以降と次行以降を削除
             if ($l -match "\s{2,}") {
                 $l = $l -replace "\s{2,}.*$", ""
                 $resultBlock.Add($l)
-                break 
+                break # 以降の行を削除
             }
             # 用法の置換ルール
-            if ($l -match "^分１\s*") {
-                $l = $l -replace "^分１\s*", "" -replace "食後", ""
-            } elseif ($l -match "^分３") {
+            if ($l -match "^分[1１]\s*") {
+                $l = $l -replace "^分[1１]\s*", "" -replace "食後", ""
+            } elseif ($l -match "^分[3３]") {
                 $l = $l -replace "毎食後", ""
             } else {
                 $l = $l -replace "食後", ""
@@ -87,7 +87,7 @@ foreach ($block in $blocks) {
             if ($l -match "\s{2,}") {
                 $l = $l -replace "\s{2,}.*$", ""
                 $resultBlock.Add($l)
-                break 
+                break # 以降の行を削除
             }
         }
         # 「外）」から始まる行
@@ -111,14 +111,13 @@ foreach ($block in $blocks) {
 
 # 最終結合と空白・文字の正規化
 $rawResult = ($finalOutput -join "`r?`n") -replace "　", " " -replace "\s{2,}", " "
-# 空白のみの行を除去して再構成
 $finalLines = $rawResult -split "`r?`n" | Where-Object { ![string]::IsNullOrWhiteSpace($_) }
 $resultText = $finalLines -join "`r?`n"
 
 # 4. クリップボードに挿入
 if (![string]::IsNullOrEmpty($resultText)) {
     Set-Clipboard -Value $resultText
-    Write-Host "--- 処理完了 ---" -ForegroundColor Green
+    Write-Host "--- 処理完了 (v1.1.0) ---" -ForegroundColor Green
     Write-Host "整形したテキストをクリップボードに保存しました。"
 } else {
     Write-Warning "整形結果が空になりました。"
