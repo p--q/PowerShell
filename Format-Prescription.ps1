@@ -2,11 +2,10 @@
 .FILENAME
     Format-Prescription.ps1
 .VERSION
-    1.1.1
+    1.1.2
 .DESCRIPTION
-    1. 不可視の制御文字や特殊な空白を徹底除去（「?」化対策）
-    2. 不要な行の削除、薬品名の結合、用法の正規化
-    3. 結果を標準的なテキスト形式でクリップボードへ保存
+    メモ帳での「?」化を徹底的に防ぐため、.NETのDataObjectを使用して
+    プレーンテキスト(Unicode)としてクリップボードに強制上書きします。
 #>
 
 # 1. クリップボードからテキストを取得
@@ -16,30 +15,21 @@ if ([string]::IsNullOrWhiteSpace($inputContent)) {
     exit
 }
 
-# --- 前処理：不可視の制御文字を削除 ---
-# 改行(10,13)とタブ(9)以外の、ASCII制御文字や特殊な文字を置換
+# --- 前処理：制御文字の除去 ---
 $inputContent = $inputContent -replace "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", ""
 
 $lines = $inputContent -split "`r?`n" | ForEach-Object {
-    $line = $_
-    # 行頭・行末のトリム（不可視の空白も含む）
-    $line = $line.Trim()
-    
-    # 「商品名」とその後の空白を削除
+    $line = $_.Trim()
     $line = $line -replace "^商品名\s*", ""
-    # 「（任意の文字として）」を削除
     $line = $line -replace "[（\(].*?として[）\)]", ""
     
-    # 削除対象の行
     if ($line -match "^(処方箋使用期限|--|<)") { return $null }
-    
-    # 文字列が空になった場合も除外
     if ([string]::IsNullOrWhiteSpace($line)) { return $null }
     
     $line
 } | Where-Object { $_ -ne $null }
 
-# 再結合して「処方日」ごとにブロック化
+# ブロック分割処理
 $processedText = $lines -join "`r?`n"
 $blocks = $processedText -split "(?=処方日[:：])" | Where-Object { $_ -match "処方日" }
 
@@ -99,14 +89,20 @@ foreach ($block in $blocks) {
     $finalOutput.Add(($resultBlock -join "`r?`n"))
 }
 
-# 最終結合と空白の正規化
+# 最終整形
 $rawResult = ($finalOutput -join "`r?`n") -replace "　", " " -replace "\s{2,}", " "
 $finalLines = $rawResult -split "`r?`n" | Where-Object { ![string]::IsNullOrWhiteSpace($_) }
 $resultText = $finalLines -join "`r?`n"
 
-# 4. クリップボードに挿入（確実にテキストとして渡す）
+# --- クリップボードへの「強制プレーンテキスト」書き込み ---
 if (![string]::IsNullOrEmpty($resultText)) {
-    # メモ帳での「?」化を防ぐため、明示的に文字列としてセット
-    Set-Clipboard -Value ([string]$resultText)
-    Write-Host "--- 修正版(v1.1.1) 処理完了 ---" -ForegroundColor Green
+    try {
+        # PowerShell 5.1のSet-Clipboardを使わず、Windows FormsのClipboardクラスを使用
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.Clipboard]::SetText($resultText)
+        Write-Host "--- v1.1.2 完了 ---" -ForegroundColor Green
+    } catch {
+        # 万が一Formsが失敗した場合の予備（これでもダメなら環境依存の可能性が高いです）
+        $resultText | clip
+    }
 }
